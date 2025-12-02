@@ -84,10 +84,12 @@ export default function FilesPage() {
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const canUpload = hasPermission(memberRole || undefined, memberPermissions as Permission[] | undefined, 'files.upload');
-  const canDelete = hasPermission(memberRole || undefined, memberPermissions as Permission[] | undefined, 'files.delete');
-  const canShare = hasPermission(memberRole || undefined, memberPermissions as Permission[] | undefined, 'files.share');
+  // Default to true if role is not yet loaded but user is logged in, otherwise check permission
+  const canUpload = !memberRole ? !!user : hasPermission(memberRole, memberPermissions as Permission[] | undefined, 'files.upload');
+  const canDelete = !memberRole ? !!user : hasPermission(memberRole, memberPermissions as Permission[] | undefined, 'files.delete');
+  const canShare = !memberRole ? !!user : hasPermission(memberRole, memberPermissions as Permission[] | undefined, 'files.share');
 
   useEffect(() => {
     if (currentTeam) {
@@ -142,6 +144,50 @@ export default function FilesPage() {
       }
     }
     e.target.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (canUpload) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!canUpload || !currentTeam || !user) return;
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+
+    for (const file of Array.from(droppedFiles)) {
+      try {
+        setUploading(true);
+        const uploadedFile = await uploadFile(
+          currentTeam.id,
+          file,
+          user.id,
+          currentFolder?.id,
+          (progress) => setUploadProgress(progress)
+        );
+        addFile(uploadedFile);
+      } catch (error) {
+        console.error('Error uploading file:', error);
+      } finally {
+        setUploading(false);
+        setUploadProgress(0);
+      }
+    }
   };
 
   const handleCreateFolder = async () => {
@@ -326,7 +372,21 @@ export default function FilesPage() {
 
       {/* Content */}
       <ScrollArea className="flex-1">
-        <div className="p-6">
+        <div 
+          className={`p-6 min-h-full ${isDragging ? 'bg-primary/5 border-2 border-dashed border-primary rounded-lg' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none">
+              <div className="text-center p-8 rounded-lg border-2 border-dashed border-primary bg-background">
+                <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
+                <h3 className="text-xl font-semibold mb-2">Drop files to upload</h3>
+                <p className="text-muted-foreground">Release to upload your files</p>
+              </div>
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -335,11 +395,48 @@ export default function FilesPage() {
             <>
               {filteredFolders.length === 0 && filteredFiles.length === 0 ? (
                 <div className="text-center py-12">
-                  <FolderIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">No files or folders</h3>
-                  <p className="text-muted-foreground mb-4">
-                    {searchQuery ? 'No results found' : 'Get started by creating a folder or uploading files'}
-                  </p>
+                  {searchQuery ? (
+                    <>
+                      <FolderIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                      <h3 className="text-lg font-semibold mb-2">No results found</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Try a different search term
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      {canUpload ? (
+                        <div 
+                          className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-12 hover:border-primary/50 transition-colors cursor-pointer"
+                          onClick={() => document.getElementById('file-upload')?.click()}
+                        >
+                          <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                          <h3 className="text-lg font-semibold mb-2">Upload files</h3>
+                          <p className="text-muted-foreground mb-4">
+                            Drag and drop files here, or click to browse
+                          </p>
+                          <div className="flex gap-2 justify-center">
+                            <Button onClick={(e) => { e.stopPropagation(); setCreateFolderOpen(true); }} variant="outline">
+                              <FolderPlus className="mr-2 h-4 w-4" />
+                              New Folder
+                            </Button>
+                            <Button onClick={(e) => { e.stopPropagation(); document.getElementById('file-upload')?.click(); }}>
+                              <Upload className="mr-2 h-4 w-4" />
+                              Upload Files
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <FolderIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                          <h3 className="text-lg font-semibold mb-2">No files or folders</h3>
+                          <p className="text-muted-foreground mb-4">
+                            This folder is empty
+                          </p>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className={viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4' : 'space-y-2'}>
