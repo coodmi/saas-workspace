@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useFileStore } from '@/stores/file-store';
-import { hasPermission, Permission } from '@/lib/roles';
+import { hasPermission, Permission, Role } from '@/lib/roles';
 import {
   getTeamFolders,
   getFilesInFolder,
@@ -52,7 +52,7 @@ import { formatFileSize } from '@/lib/utils';
 import { format } from 'date-fns';
 
 export default function FilesPage() {
-  const { currentTeam, user, memberRole, memberPermissions } = useAuthStore();
+  const { currentTeam, user, memberRole, memberPermissions, getUserRole } = useAuthStore();
   const {
     folders,
     files,
@@ -86,10 +86,15 @@ export default function FilesPage() {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Default to true if role is not yet loaded but user is logged in, otherwise check permission
-  const canUpload = !memberRole ? !!user : hasPermission(memberRole, memberPermissions as Permission[] | undefined, 'files.upload');
-  const canDelete = !memberRole ? !!user : hasPermission(memberRole, memberPermissions as Permission[] | undefined, 'files.delete');
-  const canShare = !memberRole ? !!user : hasPermission(memberRole, memberPermissions as Permission[] | undefined, 'files.share');
+  // Get role from store or fallback to getUserRole() which checks team.members
+  const userRole = memberRole || getUserRole();
+  // Convert to Role type (guest is not a valid Role, treat as undefined)
+  const effectiveRole: Role | undefined = userRole === 'guest' ? undefined : (userRole as Role | undefined);
+  
+  // Default to true if user is logged in and we can't determine role, otherwise check permission
+  const canUpload = !effectiveRole ? !!user : hasPermission(effectiveRole, memberPermissions as Permission[] | undefined, 'files.upload');
+  const canDelete = !effectiveRole ? !!user : hasPermission(effectiveRole, memberPermissions as Permission[] | undefined, 'files.delete');
+  const canShare = !effectiveRole ? !!user : hasPermission(effectiveRole, memberPermissions as Permission[] | undefined, 'files.share');
 
   useEffect(() => {
     if (currentTeam) {
