@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isTeamMember(teamId) {
+      return exists(/databases/$(database)/documents/teamMembers/$(request.auth.uid + '_' + teamId));
+    }
+    
+    function isTeamAdmin(teamId) {
+      let member = get(/databases/$(database)/documents/teamMembers/$(request.auth.uid + '_' + teamId));
+      return member != null && member.data.role in ['admin', 'owner'];
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+    
+    // Teams collection
+    match /teams/{teamId} {
+      allow read: if isAuthenticated() && isTeamMember(teamId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isTeamAdmin(teamId);
+    }
+    
+    // Team members collection
+    match /teamMembers/{memberId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isTeamAdmin(resource.data.teamId);
+    }
+    
+    // Team invitations collection
+    match /teamInvitations/{inviteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isTeamAdmin(request.resource.data.teamId);
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isTeamAdmin(resource.data.teamId);
+    }
+    
+    // Projects collection
+    match /projects/{projectId} {
+      allow read: if isAuthenticated() && isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() && isTeamMember(request.resource.data.teamId);
+      allow update, delete: if isAuthenticated() && isTeamMember(resource.data.teamId);
+    }
+    
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+      
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && isOwner(resource.data.authorId);
+      }
+    }
+    
+    // Files collection
+    match /files/{fileId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.uploadedBy) ||
+        request.auth.uid in resource.data.sharedWith ||
+        isTeamMember(resource.data.teamId)
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.uploadedBy);
+    }
+    
+    // Folders collection
+    match /folders/{folderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.createdBy);
+    }
+    
+    // Channels collection
+    match /channels/{channelId} {
+      allow read: if isAuthenticated() && (
+        !resource.data.isPrivate ||
+        request.auth.uid in resource.data.members
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.createdBy);
+    }
+    
+    // Direct messages collection
+    match /directMessages/{dmId} {
+      allow read, write: if isAuthenticated() && request.auth.uid in resource.data.participants;
+    }
+    
+    // Messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.senderId);
+    }
+    
+    // Typing indicators collection
+    match /typingIndicators/{indicatorId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+    
+    // Activity logs collection
+    match /activityLogs/{logId} {
+      allow read: if isAuthenticated() && isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated();
+    }
+  }
+}
