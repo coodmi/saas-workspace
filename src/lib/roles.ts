@@ -7,6 +7,7 @@ export type Permission =
   | 'files.upload'
   | 'files.edit'
   | 'files.delete'
+  | 'files.share'
   | 'teams.invite'
   | 'teams.manageRoles';
 
@@ -18,6 +19,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Permission[]> = {
     'files.upload',
     'files.edit',
     'files.delete',
+    'files.share',
     'teams.invite',
     'teams.manageRoles',
   ],
@@ -26,6 +28,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Permission[]> = {
     'projects.edit',
     'files.upload',
     'files.edit',
+    'files.share',
   ],
   viewer: [],
 };
